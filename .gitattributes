@@ -1,0 +1,6 @@
+# Files that run or are read inside Linux containers must keep LF line endings,
+# even when the repository is cloned on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.svg text eol=lf

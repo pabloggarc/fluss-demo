@@ -1,0 +1,26 @@
+zookeeper.address: zookeeper:2181
+default.bucket.number: 1
+default.replication.factor: 1
+tablet-server.id: 0
+data.dir: /tmp/fluss/data
+
+remote.data.dir: s3://fluss-demo/fluss_remote_data
+s3.endpoint: http://rustfs:9000
+s3.access-key: ${S3_ACCESS_KEY}
+s3.secret-key: ${S3_SECRET_KEY}
+s3.region: us-east-1
+s3.path-style-access: true
+s3.assumed.role.arn: arn:aws:iam::000000000000:role/rustfsadmin
+s3.assumed.role.sts.endpoint: http://rustfs:9000
+
+datalake.enabled: true
+datalake.format: iceberg
+datalake.iceberg.type: hive
+datalake.iceberg.uri: thrift://metastore:9083
+datalake.iceberg.warehouse: s3://fluss-demo/datalakehouse
+datalake.iceberg.io-impl: org.apache.iceberg.aws.s3.S3FileIO
+datalake.iceberg.s3.endpoint: http://rustfs:9000
+datalake.iceberg.s3.access-key-id: ${S3_ACCESS_KEY}
+datalake.iceberg.s3.secret-access-key: ${S3_SECRET_KEY}
+datalake.iceberg.s3.path-style-access: true
+datalake.iceberg.client.region: us-east-1

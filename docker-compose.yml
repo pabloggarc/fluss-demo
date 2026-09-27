@@ -1,0 +1,121 @@
+name: fluss-demo
+
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    command: /data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    env_file: rustfs/rustfs.env
+    volumes:
+      - rustfs-data:/data
+
+  rustfs-init:
+    image: rustfs/rc:v0.1.36
+    entrypoint: ["sh", "/create-bucket.sh"]
+    depends_on:
+      - rustfs
+    env_file: rustfs/rustfs-init.env
+    volumes:
+      - ./rustfs/create-bucket.sh:/create-bucket.sh:ro
+
+  metastore:
+    image: fluss-demo/hive-metastore:3.1.3
+    build: ./metastore
+    platform: linux/amd64
+    env_file: metastore/metastore.env
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9083' 2>/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  source-db:
+    image: postgres:17
+    command: ["postgres", "-c", "wal_level=logical"]
+    ports:
+      - "5432:5432"
+    env_file: postgres/source-db.env
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  generator:
+    image: fluss-demo/generator
+    build: ./generator
+    depends_on:
+      source-db:
+        condition: service_healthy
+    env_file: generator/generator.env
+
+  zookeeper:
+    image: zookeeper:3.9.2
+    restart: always
+
+  coordinator-server:
+    image: fluss-demo/fluss:1.0.0
+    build: ./fluss
+    command: coordinatorServer
+    depends_on:
+      metastore:
+        condition: service_healthy
+      zookeeper:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+    env_file: fluss/coordinator-server.env
+
+  tablet-server:
+    image: fluss-demo/fluss:1.0.0
+    command: tabletServer
+    depends_on:
+      - coordinator-server
+    env_file: fluss/tablet-server.env
+
+  jobmanager:
+    image: fluss-demo/flink:1.20-1.0.0
+    build: ./flink
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    env_file: flink/jobmanager.env
+
+  taskmanager:
+    image: fluss-demo/flink:1.20-1.0.0
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    env_file: flink/taskmanager.env
+
+  jobs-init:
+    image: fluss-demo/flink:1.20-1.0.0
+    command: ["bash", "/opt/submit-jobs.sh"]
+    depends_on:
+      - taskmanager
+      - tablet-server
+      - generator
+    env_file: flink/jobs-init.env
+    volumes:
+      - ./flink/sql:/opt/sql:ro
+      - ./flink/sql-client.sh:/opt/sql-client.sh:ro
+      - ./flink/submit-jobs.sh:/opt/submit-jobs.sh:ro
+
+  sql-client:
+    image: fluss-demo/flink:1.20-1.0.0
+    command: ["bash", "/opt/sql-client.sh"]
+    profiles: ["client"]
+    depends_on:
+      - jobmanager
+    env_file: flink/sql-client.env
+    volumes:
+      - ./flink/sql:/opt/sql:ro
+      - ./flink/sql-client.sh:/opt/sql-client.sh:ro
+
+volumes:
+  rustfs-data:
